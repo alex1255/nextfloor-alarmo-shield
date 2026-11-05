@@ -1,62 +1,36 @@
-# NextFloor Alarm Shield
+# Schutzschild für NextFloor und Alarmo
 
-A soft, translucent protective dome around your home while an alarm panel is armed. Works with Alarmo and other Home Assistant `alarm_control_panel` entities. Independent NextFloor plugin, no fork and no modifications to NextFloor's bundles.
+Die Idee war einfach: Wenn die Alarmanlage scharf ist, soll man das am ganzen Haus sehen – als leicht schimmernden Schutzschild statt nur als kleines Symbol.
 
-## Behaviour
+Dieses Plugin legt dafür eine transparente Kuppel um dein Haus in [NextFloor](https://github.com/therealMRBK/NextFloor). Sie folgt der Ansicht beim Drehen und Zoomen. Gedacht ist es für [Alarmo](https://github.com/nielsfaber/alarmo); grundsätzlich funktioniert es auch mit anderen Home-Assistant-Alarmanlagen.
 
-| Alarm state | Shield |
-|---|---|
-| Disarmed / disarming | Hidden |
-| Armed home, away, night, vacation, custom bypass | Subtle glow, optional slow pulse |
-| Arming / pending | Amber, gently pulsing |
-| Triggered | Stronger red pulse, no strobe |
-| Unknown / unavailable / missing | Hidden; never presented as armed |
+![Schutzschild in NextFloor – hier als visuelle Vorschau](docs/shield-preview.png)
 
-Display only: the plugin never arms, disarms or triggers an alarm. It sends no alarm service calls. Preview buttons simulate the **visual** state for 30 seconds and label the view **VORSCHAU**. Preview state is never written to Home Assistant or saved as an alarm state.
+*Der Screenshot zeigt die Vorschau. Die echte Alarmanlage war dabei unscharf.*
 
-## Install locally
+Ist die Anlage **scharf**, schimmert die Kuppel dezent rot. Während der **Ein- oder Ausgangsverzögerung** wird sie orange. Bei **ausgelöstem Alarm** pulsiert sie stärker rot. Ist die Anlage unscharf oder ihr Zustand unbekannt, verschwindet der Schild.
 
-1. Copy `nextfloor-alarmo-shield.js` to `/config/www/nextfloor/alarm-shield/nextfloor-alarmo-shield-1.0.1.js`.
-2. NextFloor → Extensions → Plugins: add `/local/nextfloor/alarm-shield/nextfloor-alarmo-shield-1.0.1.js`.
-3. Place your alarm entity in the editor and enable **Alarm-Schutzschild → Schutzschild aktiv** in its device settings. Saving at least one of this plugin's settings on that placement explicitly selects this alarm; unconfigured alarms are never guessed.
-4. Reload the page. Native plugin settings persist with the plan.
+Farbe, Stärke und Pulsieren lassen sich einstellen. Wer mag, kann ein Energiegitter anzeigen oder eine freistehende Garage mit einschließen. Zum Ausprobieren gibt es eine klar markierte **30-Sekunden-Vorschau**. Das Plugin schaltet die Alarmanlage niemals selbst scharf oder unscharf.
 
-To expose the settings/preview dialog in the central star menu, add an own button with action `fire_dom_event` and data:
+## Einrichten
+
+1. [Die Plugin-Datei herunterladen](https://raw.githubusercontent.com/alex1255/nextfloor-alarmo-shield/93f81b843df86d9b878373fb6e7732c68e046f09/nextfloor-alarmo-shield.js) und in Home Assistant unter `/config/www/nextfloor/alarm-shield/nextfloor-alarmo-shield-1.0.1.js` ablegen. Fehlende Ordner vorher anlegen.
+2. In NextFloor unter **Erweiterungen → Plugins** diese Adresse hinzufügen: `/local/nextfloor/alarm-shield/nextfloor-alarmo-shield-1.0.1.js`.
+3. Die Alarmanlage im NextFloor-Editor platzieren und bei ihren Geräteeinstellungen **Alarm-Schutzschild** aktivieren. Eine Einstellung speichern, damit diese Alarmanlage dem Schild zugeordnet wird.
+4. Die Seite neu laden und die Haus-Gesamtansicht öffnen.
+
+Für den bequemen Zugriff im Sternmenü einen eigenen Knopf **Schutzschild** mit der Aktion `fire_dom_event` und diesen Daten anlegen:
 
 ```json
 {"nextfloor_shield":{"action":"settings"}}
 ```
 
-The button may be labelled **Schutzschild**, with icon `shield-home-outline`. In plans that use this plugin alongside the Cameras plugin, tapping an alarm marker may open Home Assistant's alarm dialog through Cameras. The star-menu button reliably opens this plugin's settings and preview instead.
+Darüber öffnest du Einstellungen und Vorschau. Die Einstellungen werden im Plan gespeichert. Die Einrichtung braucht keinen Fork von NextFloor; das Plugin läuft lokal und benötigt keine Cloud-Verbindung.
 
-Settings: enabled, glow intensity (0–45%), house padding, armed colour (red/cyan/violet), soft pulse, optional energy grid, include detached outbuildings, show only in whole-house view. The dialog can save these fields in the plan; it fetches the latest building and checks for conflicting changes to the alarm's settings. Do not edit the plan simultaneously in another tab while saving plugin settings.
+## Was man wissen sollte
 
-The primary house is detected from the largest connected cluster of rooms across floors. Detached garages are excluded unless requested. Basement height and the roof are included. No house coordinates or entity names are hard-coded.
+Getestet mit **NextFloor 0.24.0**, Plugin-API 1. Für die Kuppel nutzt das Plugin einen kleinen Adapter zur NextFloor-Kamera. Es verändert keine NextFloor-Programmdateien, kann bei größeren Änderungen an der Ansicht aber eine Anpassung brauchen. Die Kuppel ist eine projizierte Einblendung und kein physikalisch exakt verdecktes 3D-Objekt.
 
-## Hosting on GitHub
+Die [technischen Hinweise](docs/TECHNICAL.md) erklären das genauer. Zehn Tests prüfen unter anderem Alarmzustände, Projektion und Hausgeometrie. Ausführen mit `npm test`; keine zusätzlichen Pakete nötig.
 
-This is one self-contained ES module, also suitable for HTTPS hosting. NextFloor accepts an HTTPS URL ending in `.js` (with an optional query). Prefer a URL pinned to a commit and a SHA-256 in the plan's plugin reference. For reliable offline use, keep a local copy on Home Assistant even if you publish the source on GitHub. Do not publish your private floor plan, entity inventory, photographs or screenshots with the plugin.
-
-## Compatibility and limitations
-
-- Tested with NextFloor **0.24.0**, plugin API **1**.
-- Native plugin API supplies device settings, status markers and room sections. It does **not** yet expose an arbitrary 3D effect layer.
-- The dome therefore uses a small, isolated, feature-checked adapter to the existing `nf-view3d` camera. A transparent Canvas overlay projects the shell with the same view and projection matrices, so it follows rotation, pan and zoom. It does not replace the renderer or monkey-patch NextFloor.
-- The shell is a display overlay, not a depth-tested Three.js mesh. It can tint the house and nearby objects where the projected dome overlaps them. The primary house must be in its normal stacked arrangement; an exploded view is not a single physical volume.
-- Breaking internal changes can require updating this adapter. If its camera fields are unavailable, the overlay stays off and the settings dialog reports the incompatibility. This is **not** a guarantee of compatibility with every future NextFloor update.
-- A separate canvas keeps taps on rooms and devices usable (`pointer-events: none`). It does not affect the plan geometry, furniture visibility or energy readings.
-- Respects `prefers-reduced-motion`; pulses stop when reduced motion is requested. Rendering stops while hidden/disarmed or the page is in the background. No CDN dependencies, tracking, tokens, or external network requests.
-- Disabling/removing the plugin takes effect after reloading the page, as with other NextFloor plugins.
-
-## Development
-
-Requires Node.js 20+; no dependencies or build step.
-
-```sh
-npm test
-npm run check
-```
-
-Tests cover alarm-state mapping, reduced motion, settings validation, connected house bounds, basement/roof coverage, projection, finite mesh geometry, smooth silhouette, adapter failure and absence of alarm-control/network operations. Real-alarm transitions are deliberately not used for testing.
-
-MIT licensed. Independent community plugin; not an official NextFloor or Alarmo component.
+MIT-Lizenz. Ein unabhängiges Community-Plugin, kein offizieller Bestandteil von NextFloor oder Alarmo.
