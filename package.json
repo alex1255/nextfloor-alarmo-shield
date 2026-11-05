@@ -1,0 +1,8 @@
+{
+  "name": "nextfloor-alarmo-shield",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {"test": "node --test test/shield.test.mjs", "check": "node --check nextfloor-alarmo-shield.js"}
+}
