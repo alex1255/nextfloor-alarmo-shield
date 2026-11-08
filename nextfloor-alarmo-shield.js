@@ -1,10 +1,10 @@
-/* NextFloor Alarm Shield v1.0.1 — MIT. Display only; never arms or disarms an alarm.
+/* NextFloor Alarm Shield v1.1.0 — MIT. Display only; never arms or disarms an alarm.
  * Public API 1 supplies settings and markers. An isolated, feature-checked adapter
  * projects the shell with NextFloor's existing camera (tested with 0.24.0).
  * No imports, external requests, credentials, telemetry, or hard-coded home geometry.
  */
 export const ID = 'alarm-shield';
-export const VERSION = '1.0.1';
+export const VERSION = '1.1.0';
 const DEFAULTS = { enabled: true, opacity: 16, margin: 0.9, color: 'red', pulse: true, grid: false, outbuildings: false, house_only: true };
 const COLORS = { red: [255, 73, 104], cyan: [67, 225, 255], violet: [177, 133, 255] };
 const LABELS = { disarmed: 'Unscharf', armed_home: 'Zuhause scharf', armed_away: 'Abwesend scharf', armed_night: 'Nachts scharf', armed_vacation: 'Urlaub scharf', armed_custom_bypass: 'Benutzerdefiniert scharf', arming: 'Ausgangsverzögerung', pending: 'Eingangsverzögerung', triggered: 'ALARM', disarming: 'Wird unscharf', unknown: 'Unbekannt', unavailable: 'Nicht verfügbar' };
@@ -12,7 +12,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export function settings(raw = {}) {
   const number = (k, lo, hi) => Number.isFinite(Number(raw[k])) && raw[k] !== null && raw[k] !== '' ? clamp(Number(raw[k]), lo, hi) : DEFAULTS[k];
   const bool = k => typeof raw[k] === 'boolean' ? raw[k] : DEFAULTS[k];
-  return { enabled: bool('enabled'), opacity: number('opacity', 0, 45), margin: number('margin', 0.3, 3), color: Object.hasOwn(COLORS, raw.color) ? raw.color : 'red', pulse: bool('pulse'), grid: bool('grid'), outbuildings: bool('outbuildings'), house_only: bool('house_only') };
+  return { enabled: bool('enabled'), opacity: number('opacity', 0, 45), margin: number('margin', 0.3, 3), color: Object.hasOwn(COLORS, raw.color) ? raw.color : 'red', pulse: bool('pulse'), grid: bool('grid'), outbuildings: bool('outbuildings'), house_only: bool('house_only'), shape: raw.shape === 'sphere' ? 'sphere' : 'dome' };
 }
 export function stateStyle(state, cfg, seconds = 0, reduced = false) {
   const armed = typeof state === 'string' && state.startsWith('armed_');
@@ -51,13 +51,16 @@ export function houseBounds(building, cfg) {
   }
   return out;
 }
-export function shellMesh(box, margin = 0.9, rings = 16, segments = 48) {
+export function shellMesh(box, margin = 0.9, rings = 16, segments = 48, shape = 'dome') {
   const cx = (box.x0 + box.x1) / 2, cz = (box.z0 + box.z1) / 2, base = box.y0 - 0.12;
-  const rx = (box.x1 - box.x0) * 0.78 + margin, rz = (box.z1 - box.z0) * 0.78 + margin, ry = (box.y1 - base) * 1.3 + margin;
+  const sphere = shape === 'sphere';
+  const cy = sphere ? (box.y0 + box.y1) / 2 : base;
+  const radius = Math.hypot((box.x1 - box.x0) / 2, (box.z1 - box.z0) / 2, (box.y1 - box.y0) / 2) + margin;
+  const rx = sphere ? radius : (box.x1 - box.x0) * 0.78 + margin, rz = sphere ? radius : (box.z1 - box.z0) * 0.78 + margin, ry = sphere ? radius : (box.y1 - base) * 1.3 + margin;
   const vertices = [], faces = [], grid = [];
   for (let j = 0; j <= rings; j++) for (let k = 0; k < segments; k++) {
-    const a = k / segments * Math.PI * 2, b = j / rings * Math.PI / 2;
-    vertices.push([cx + rx * Math.cos(b) * Math.cos(a), base + ry * Math.sin(b), cz + rz * Math.cos(b) * Math.sin(a)]);
+    const a = k / segments * Math.PI * 2, b = sphere ? (j / rings - 0.5) * Math.PI : j / rings * Math.PI / 2;
+    vertices.push([cx + rx * Math.cos(b) * Math.cos(a), cy + ry * Math.sin(b), cz + rz * Math.cos(b) * Math.sin(a)]);
   }
   for (let j = 0; j < rings; j++) for (let k = 0; k < segments; k++) {
     const a = j * segments + k, b = j * segments + (k + 1) % segments, c = a + segments, d = b + segments;
@@ -65,7 +68,7 @@ export function shellMesh(box, margin = 0.9, rings = 16, segments = 48) {
     if (j % 3 === 0) grid.push([a, b]);
     if (k % 4 === 0) grid.push([a, c]);
   }
-  return { vertices, faces, grid, ring: Array.from({ length: segments }, (_, k) => k), center: [cx, base + ry * 0.45, cz] };
+  return { vertices, faces, grid, ring: sphere ? [] : Array.from({ length: segments }, (_, k) => k), center: [cx, sphere ? cy : base + ry * 0.45, cz] };
 }
 export function project(point, view, projection, width, height) {
   const [x, y, z] = point;
@@ -113,11 +116,11 @@ function paint(ctx, mesh, adapter, width, height, style, cfg) {
     ctx.stroke();
   }
   const ring = mesh.ring.map(i => pts[i]);
-  if (ring.every(Boolean)) {
+  if (ring.length && ring.every(Boolean)) {
     ctx.save(); ctx.beginPath(); ring.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
     ctx.strokeStyle = rgba(style.color, Math.min(0.8, style.alpha * 2)); ctx.lineWidth = 1.4; ctx.shadowColor = rgba(style.color, 0.8); ctx.shadowBlur = 12; ctx.stroke(); ctx.restore();
   }
-  // Silhouette from the visible hemisphere's extreme points, not a screen-sized vignette.
+  // Silhouette from the visible shell's extreme points, not a screen-sized vignette.
   const outline=convexHull(pts);
   if (outline.length>=3) {
     ctx.save(); ctx.beginPath(); outline.forEach((p, i) => i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1])); ctx.closePath(); ctx.lineWidth=1.2; ctx.strokeStyle=rgba(style.color,style.alpha*1.8); ctx.shadowColor=rgba(style.color,0.7); ctx.shadowBlur=15; ctx.stroke(); ctx.restore();
@@ -159,8 +162,8 @@ class ShieldView {
         const dpr=Math.min(devicePixelRatio || 1,1.5);
         if (this.canvas.width!==Math.round(w*dpr)||this.canvas.height!==Math.round(h*dpr)) { this.canvas.width=Math.round(w*dpr); this.canvas.height=Math.round(h*dpr); }
         this.ctx.setTransform(dpr,0,0,dpr,0,0);
-        const key=JSON.stringify([cfg.outbuildings,cfg.margin]);
-        if(a.building!==this.meshBuilding || key!==this.meshKey){this.meshBuilding=a.building;this.meshKey=key;const box=houseBounds(a.building,cfg);this.mesh=box?shellMesh(box,cfg.margin):null;}
+        const key=JSON.stringify([cfg.outbuildings,cfg.margin,cfg.shape]);
+        if(a.building!==this.meshBuilding || key!==this.meshKey){this.meshBuilding=a.building;this.meshKey=key;const box=houseBounds(a.building,cfg);this.mesh=box?shellMesh(box,cfg.margin,16,48,cfg.shape):null;}
         const style=stateStyle(state,cfg,time/1000,this.manager.reduced.matches);
         if(this.mesh&&style)paint(this.ctx,this.mesh,a,w,h,style,cfg);
       }
@@ -197,6 +200,17 @@ class ShieldManager {
     for(const [key,label,min,max,step] of [['opacity','Schimmerstärke (%)',0,45,1],['margin','Abstand zum Haus (m)',0.3,3,0.1]]){
       const wrap=element('label',label+' '),input=element('input');input.type='number';input.min=String(min);input.max=String(max);input.step=String(step);input.value=String(cfg[key]);input.style.cssText='width:80px;padding:5px;';input.oninput=()=>{cfg=settings({...cfg,[key]:Number(input.value)});if(this.preview)this.preview.cfg=cfg;};wrap.append(input);controls.append(wrap);
     }
+    const shapeWrap = element('label', 'Form '), shapeSelect = element('select');
+    for (const [value, label] of [['dome', 'Kuppel'], ['sphere', 'Kugel']]) {
+      const option = element('option', label);
+      option.value = value; option.selected = value === cfg.shape;
+      shapeSelect.append(option);
+    }
+    shapeSelect.onchange = () => {
+      cfg = settings({ ...cfg, shape: shapeSelect.value });
+      if (this.preview) this.preview.cfg = cfg;
+    };
+    shapeWrap.append(shapeSelect); controls.append(shapeWrap);
     const colorWrap=element('label','Farbe '),select=element('select');for(const [value,text]of [['red','Rot'],['cyan','Cyan'],['violet','Violett']]){const opt=element('option',text);opt.value=value;opt.selected=value===cfg.color;select.append(opt);}select.onchange=()=>{cfg={...cfg,color:select.value};if(this.preview)this.preview.cfg=cfg;};colorWrap.append(select);controls.append(colorWrap);
     for(const [key,label]of [['enabled','Schutzschild aktiv'],['pulse','Sanft pulsieren'],['grid','Energiegitter zeigen'],['outbuildings','Freistehende Nebengebäude einschließen'],['house_only','Nur in der Haus-Gesamtansicht']]){const wrap=element('label'),input=element('input');input.type='checkbox';input.checked=cfg[key];input.onchange=()=>{cfg={...cfg,[key]:input.checked};if(this.preview)this.preview.cfg=cfg;};wrap.append(input,document.createTextNode(' '+label));controls.append(wrap);}
     dialog.append(controls,element('h3','Nur visuelle Vorschau'));
@@ -228,6 +242,7 @@ const plugin = {
       {key:'opacity',label:{de:'Schimmerstärke (%)',en:'Glow intensity (%)'},type:'number',default:16,min:0,max:45,step:1},
       {key:'margin',label:{de:'Abstand zum Haus (m)',en:'House padding (m)'},type:'number',default:0.9,min:0.3,max:3,step:0.1},
       {key:'color',label:{de:'Farbe bei scharf',en:'Armed color'},type:'select',default:'red',options:[['red','Rot / Red'],['cyan','Cyan'],['violet','Violett / Violet']]},
+      {key:'shape',label:{de:'Form',en:'Shape'},type:'select',default:'dome',options:[['dome','Kuppel / Dome'],['sphere','Kugel / Sphere']]},
       {key:'pulse',label:{de:'Sanft pulsieren',en:'Soft pulse'},type:'boolean',default:true},
       {key:'grid',label:{de:'Energiegitter',en:'Energy grid'},type:'boolean',default:false},
       {key:'outbuildings',label:{de:'Nebengebäude einschließen',en:'Include detached buildings'},type:'boolean',default:false},
