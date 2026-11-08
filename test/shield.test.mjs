@@ -26,7 +26,7 @@ test('reduced motion and disabled pulse are static; no strobing',()=>{
  assert.notEqual(stateStyle('armed_away',cfg,0).alpha,stateStyle('armed_away',cfg,2.5).alpha);
 });
 test('settings clamp unsafe values and reject unknown colors and string booleans',()=>{
- assert.deepEqual(settings({opacity:1000,margin:-7,color:'__proto__',enabled:'false'}),{enabled:true,opacity:45,margin:0.3,color:'red',pulse:true,grid:false,outbuildings:false,house_only:true});
+ assert.deepEqual(settings({opacity:1000,margin:-7,color:'__proto__',enabled:'false'}),{enabled:true,opacity:45,margin:0.3,color:'red',pulse:true,grid:false,outbuildings:false,house_only:true,shape:'dome'});
  assert.equal(settings({opacity:'not a number'}).opacity,16);
 });
 test('house cluster includes basement and roof, detached garage is optional, input stays intact',()=>{
@@ -44,6 +44,17 @@ test('mesh is finite, spans above the roof and below basement, ring closes witho
  assert.ok(Math.min(...mesh.vertices.map(p=>p[1]))<box.y0);
  assert.equal(mesh.ring.length,48);
  assert.ok(mesh.faces.every(face=>face.every(i=>i>=0&&i<mesh.vertices.length)));
+});
+test('sphere encloses the house including the basement and has no ground ring', () => {
+ const box = houseBounds(building, settings());
+ const { shape } = settings({ shape: 'sphere' });
+ const mesh = shellMesh(box, 0.9, 16, 48, shape);
+ const [cx, cy, cz] = mesh.center;
+ const radius = Math.hypot(box.x1-cx, box.y1-cy, box.z1-cz) + 0.9;
+ assert.equal(mesh.ring.length, 0);
+ assert.ok(mesh.vertices.every(([x,y,z]) => Math.abs(Math.hypot(x-cx,y-cy,z-cz)-radius) < 1e-9));
+ assert.ok(Math.min(...mesh.vertices.map(p => p[1])) < box.y0 - 0.9);
+ assert.equal(settings({ shape: 'unknown' }).shape, 'dome');
 });
 test('projection follows view and perspective, never draws points behind the camera',()=>{
  const I=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1];
